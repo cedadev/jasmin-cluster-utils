@@ -1,0 +1,71 @@
+---
+heat_template_version: 2016-04-08
+
+
+description: >
+  Resource for a group of homogeneous cluster nodes.
+
+
+parameters:
+  cluster_name:
+    type: string
+    label: The name of the cluster
+
+  cluster_groups:
+    type: json
+    label: List of dictionaries defining properties for each node group
+
+  cluster_image:
+    type: string
+    label: The image to use for cluster nodes (must be CentOS 7)
+    constraints:
+      - custom_constraint: glance.image
+
+  cluster_user_keypair:
+    type: string
+    label: SSH key pair for user access to the cluster
+    constraints:
+      - custom_constraint: nova.keypair
+
+  cluster_deploy_public_key:
+    type: string
+    label: SSH public key for deployments to the cluster
+
+  cluster_network:
+    type: string
+    label: The network to attach cluster nodes to
+    constraints:
+      - custom_constraint: neutron.network
+
+  group_idx:
+    type: number
+    label: The index of the group
+
+
+resources:
+  node_group:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: [cluster_groups, { get_param: group_idx }, num_nodes] }
+      resource_def:
+        type: JASMIN::CaaS::Node
+        properties:
+          name:
+            list_join:
+              - '-'
+              - [ { get_param: cluster_name },
+                  { get_param: [cluster_groups, { get_param: group_idx }, name] },
+                  '%index%' ]
+          image: { get_param: cluster_image }
+          flavor: { get_param: [cluster_groups, { get_param: group_idx }, flavor] }
+          user_keypair: { get_param: cluster_user_keypair }
+          deploy_public_key: { get_param: cluster_deploy_public_key }
+          network: { get_param: cluster_network }
+          root_volume_size: { get_param: [cluster_groups, { get_param: group_idx }, root_volume_size] }
+
+
+outputs:
+  group_data:
+    value:
+      name: { get_param: [cluster_groups, { get_param: group_idx }, name] }
+      nodes: { get_attr: [node_group, instance_data] }

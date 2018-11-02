@@ -1,0 +1,72 @@
+---
+heat_template_version: 2016-04-08
+
+
+description: >
+  Top level Cluster-as-a-Service resource for the JASMIN Cloud.
+
+
+parameters:
+  # This is required because yaql isn't available until Newton
+  cluster_group_count:
+    type: number
+    label: The number of node groups in the cluster
+
+  cluster_groups:
+    type: json
+    label: List of dictionaries defining properties for each node group
+
+  # This should be set automatically by environment.yaml
+  cluster_image:
+    type: string
+    label: The image to use for cluster nodes (must be CentOS 7)
+    constraints:
+      - custom_constraint: glance.image
+
+  cluster_keypair:
+    type: string
+    label: SSH key pair for user access to the cluster
+    constraints:
+      - custom_constraint: nova.keypair
+
+  cluster_network:
+    type: string
+    label: The network to attach cluster nodes to
+    constraints:
+      - custom_constraint: neutron.network
+
+
+resources:
+  # Create a known SSH key that can be used for automated deployments to this stack
+  deploy_keypair:
+    type: OS::Nova::KeyPair
+    properties:
+      name:
+        str_replace:
+          template: "%stack_name%-deploy-key"
+          params:
+            "%stack_name%": { get_param: "OS::stack_name" }
+      save_private_key: true
+
+  node_groups:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: cluster_group_count }
+      resource_def:
+        type: JASMIN::CaaS::Group
+        properties:
+          cluster_name: { get_param: "OS::stack_name" }
+          cluster_groups: { get_param: cluster_groups }
+          cluster_image: { get_param: cluster_image }
+          cluster_network: { get_param: cluster_network }
+          cluster_user_keypair: { get_param: cluster_keypair }
+          cluster_deploy_public_key: { get_attr: [deploy_keypair, public_key] }
+          group_idx: "%index%"
+
+
+outputs:
+  node_groups:
+    value: { get_attr: [node_groups, group_data] }
+
+  deploy_private_key:
+    value: { get_attr: [deploy_keypair, private_key] }
